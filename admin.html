@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Pro Mont Kragujevac</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --ink:#1C2128; --steel:#3D5A73; --cloud:#F5F6F7; --panel:#FFFFFF;
+    --amber:#E8A33D; --amber-dark:#B87A22; --line: rgba(28,33,40,0.12);
+    --green:#2e7d4f; --radius:6px;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:'Inter',sans-serif; background:var(--cloud); color:var(--ink); line-height:1.5;}
+  h1,h2{font-family:'Space Grotesk',sans-serif;}
+  .wrap{max-width:900px; margin:0 auto; padding:32px 20px;}
+
+  /* login */
+  #login-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+  }
+  .login-box{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:36px; width:100%; max-width:360px;
+  }
+  .login-box h1{font-size:22px; margin-bottom:22px;}
+  .field{margin-bottom:16px;}
+  label{display:block; font-size:13px; font-weight:600; margin-bottom:6px;}
+  input{
+    width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:4px;
+    font-size:14px; font-family:'Inter',sans-serif;
+  }
+  input:focus{outline:2px solid var(--amber); outline-offset:-1px;}
+  button{
+    cursor:pointer; border:none; border-radius:4px; font-weight:600; font-size:14px;
+    font-family:'Inter',sans-serif; padding:11px 18px;
+  }
+  .btn-primary{background:var(--amber); color:var(--ink); width:100%;}
+  .btn-primary:hover{background:var(--amber-dark);}
+  .btn-sm{padding:7px 12px; font-size:12.5px;}
+  .btn-outline{background:transparent; border:1px solid var(--ink); color:var(--ink);}
+  .error-msg{color:#b3261e; font-size:13px; margin-top:12px; display:none;}
+
+  /* admin panel */
+  #panel-screen{display:none;}
+  header.top{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:18px 0; border-bottom:1px solid var(--line); margin-bottom:24px;
+  }
+  header.top h1{font-size:19px;}
+  .msg-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:20px; margin-bottom:14px;
+  }
+  .msg-card.odgovoreno{opacity:0.6;}
+  .msg-top{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px;}
+  .msg-badge{
+    font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;
+    padding:3px 8px; border-radius:20px; background:var(--steel); color:#fff;
+  }
+  .msg-badge.merenje{background:var(--amber-dark);}
+  .msg-date{font-size:12px; color:var(--steel);}
+  .msg-name{font-size:16px; font-weight:600; margin-bottom:4px;}
+  .msg-row{font-size:13.5px; color:var(--ink); margin-bottom:3px;}
+  .msg-row strong{color:var(--steel); font-weight:500;}
+  .msg-body{
+    font-size:14px; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line);
+    white-space:pre-wrap;
+  }
+  .msg-actions{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;}
+  .status-tag{font-size:12px; font-weight:600; color:var(--green);}
+  #empty-state, #loading-state{text-align:center; padding:60px 20px; color:var(--steel);}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>Admin prijava</h1>
+    <form id="login-form">
+      <div class="field">
+        <label for="l-email">Email</label>
+        <input type="email" id="l-email" required autocomplete="username">
+      </div>
+      <div class="field">
+        <label for="l-pass">Lozinka</label>
+        <input type="password" id="l-pass" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-primary">Uloguj se</button>
+      <div class="error-msg" id="login-error">Pogrešan email ili lozinka.</div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== PANEL ===== -->
+<div id="panel-screen">
+  <div class="wrap">
+    <header class="top">
+      <h1>Poruke sa sajta</h1>
+      <button class="btn-outline btn-sm" id="logout-btn">Odjavi se</button>
+    </header>
+    <div id="loading-state">Učitavanje poruka...</div>
+    <div id="empty-state" style="display:none;">Još uvek nema poruka.</div>
+    <div id="messages-list"></div>
+  </div>
+</div>
+
+<script>
+  var SUPABASE_URL = "https://anxinyhifxswzpwrjvie.supabase.co";
+  var SUPABASE_ANON_KEY = "sb_publishable_UzF_sEj1hnEKgFgVwQ70YA_gRlPW5v8";
+  var sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  var loginScreen = document.getElementById('login-screen');
+  var panelScreen = document.getElementById('panel-screen');
+
+  function showPanel(){
+    loginScreen.style.display = 'none';
+    panelScreen.style.display = 'block';
+    ucitajPoruke();
+  }
+  function showLogin(){
+    loginScreen.style.display = 'flex';
+    panelScreen.style.display = 'none';
+  }
+
+  // proveri da li je vec ulogovan (npr. posle refresh-a stranice)
+  sb.auth.getSession().then(function(res){
+    if(res.data.session){ showPanel(); } else { showLogin(); }
+  });
+
+  document.getElementById('login-form').addEventListener('submit', function(e){
+    e.preventDefault();
+    var email = document.getElementById('l-email').value.trim();
+    var pass = document.getElementById('l-pass').value;
+    var errEl = document.getElementById('login-error');
+    errEl.style.display = 'none';
+
+    sb.auth.signInWithPassword({ email: email, password: pass }).then(function(res){
+      if(res.error){
+        errEl.style.display = 'block';
+      } else {
+        showPanel();
+      }
+    });
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', function(){
+    sb.auth.signOut().then(function(){ showLogin(); });
+  });
+
+  function formatDatum(iso){
+    var d = new Date(iso);
+    return d.toLocaleString('sr-RS', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  }
+
+  function ucitajPoruke(){
+    document.getElementById('loading-state').style.display = 'block';
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('messages-list').innerHTML = '';
+
+    sb.from('poruke').select('*').order('created_at', { ascending:false }).then(function(res){
+      document.getElementById('loading-state').style.display = 'none';
+      if(res.error){
+        document.getElementById('messages-list').innerHTML =
+          '<div style="color:#b3261e;">Greška pri učitavanju: ' + res.error.message + '</div>';
+        return;
+      }
+      var poruke = res.data || [];
+      if(poruke.length === 0){
+        document.getElementById('empty-state').style.display = 'block';
+        return;
+      }
+      poruke.forEach(function(p){ prikaziPoruku(p); });
+    });
+  }
+
+  function prikaziPoruku(p){
+    var wrap = document.createElement('div');
+    wrap.className = 'msg-card' + (p.odgovoreno ? ' odgovoreno' : '');
+
+    var badge = p.tip_forme === 'merenje' ? 'Merenje' : 'Upit / porudžbina';
+    var badgeClass = p.tip_forme === 'merenje' ? 'merenje' : '';
+
+    var detalji = '';
+    if(p.adresa) detalji += '<div class="msg-row"><strong>Adresa:</strong> ' + escapeHtml(p.adresa) + '</div>';
+    if(p.datum) detalji += '<div class="msg-row"><strong>Željeni datum:</strong> ' + escapeHtml(p.datum) + '</div>';
+    if(p.tip_usluge) detalji += '<div class="msg-row"><strong>Usluga:</strong> ' + escapeHtml(p.tip_usluge) + '</div>';
+
+    var waLink = 'https://wa.me/381' + (p.telefon || '').replace(/\D/g,'').replace(/^0/,'') +
+      '?text=' + encodeURIComponent('Zdravo ' + p.ime + ', javljamo se povodom vaše poruke sa sajta Pro Mont Kragujevac.%0A%0A');
+
+    wrap.innerHTML =
+      '<div class="msg-top">' +
+        '<span class="msg-badge ' + badgeClass + '">' + badge + '</span>' +
+        '<span class="msg-date">' + formatDatum(p.created_at) + '</span>' +
+      '</div>' +
+      '<div class="msg-name">' + escapeHtml(p.ime) + ' — ' + escapeHtml(p.telefon) + '</div>' +
+      detalji +
+      (p.poruka ? '<div class="msg-body">' + escapeHtml(p.poruka) + '</div>' : '') +
+      '<div class="msg-actions">' +
+        '<a class="btn-outline btn-sm" href="' + waLink + '" target="_blank" rel="noopener">Odgovori preko WhatsApp-a</a>' +
+        '<a class="btn-outline btn-sm" href="tel:' + escapeHtml(p.telefon) + '">Pozovi</a>' +
+        (p.odgovoreno
+          ? '<span class="status-tag">✓ Odgovoreno</span>'
+          : '<button class="btn-outline btn-sm" data-mark-id="' + p.id + '">Označi kao odgovoreno</button>') +
+      '</div>';
+
+    document.getElementById('messages-list').appendChild(wrap);
+  }
+
+  document.getElementById('messages-list').addEventListener('click', function(e){
+    var btn = e.target.closest('[data-mark-id]');
+    if(!btn) return;
+    var id = btn.getAttribute('data-mark-id');
+    sb.from('poruke').update({ odgovoreno:true }).eq('id', id).then(function(res){
+      if(!res.error) ucitajPoruke();
+    });
+  });
+
+  function escapeHtml(str){
+    if(!str) return '';
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+</script>
+
+</body>
+</html>
